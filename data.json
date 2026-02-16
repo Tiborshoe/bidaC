@@ -1,0 +1,7 @@
+{
+    "source": "numero a = 10 + 10;\r\nipagawas a;",
+    "output": "20",
+    "assembly": "No assembly generated.",
+    "binary": "No binary\/hex generated.",
+    "variables": "a = 20\n\n========================================\nPROGRAM OUTPUT (ipakita):\n========================================\n20"
+}

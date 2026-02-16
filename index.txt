@@ -1,0 +1,704 @@
+<?php
+// index.php - Bisdac Custom IDE
+// Run with: php -S localhost:8000
+
+// ---------------------------------------------------------
+// HANDLE AJAX REQUESTS
+// ---------------------------------------------------------
+if (isset($_POST['action'])) {
+    $baseDir = __DIR__;
+    
+    // --- COMPILE ACTION ---
+    if ($_POST['action'] === 'compile') {
+        $code = isset($_POST['code']) ? $_POST['code'] : '';
+
+        // 1. Save input to file
+        file_put_contents($baseDir . '/input.bis', $code);
+
+        // 2. Prepare paths
+        $compilerPath = $baseDir . '/bisdac';
+        $inputFile    = $baseDir . '/input.bis';
+        
+        // Windows support check
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            $compilerPath .= ".exe";
+            $cmd = "\"$compilerPath\" < \"$inputFile\" 2>&1";
+        } else {
+            $cmd = "$compilerPath < $inputFile 2>&1";
+        }
+
+        // 3. Execute Compiler
+        $output = shell_exec($cmd);
+        
+        // Parse output to separate sections
+        $sections = parseCompilerOutput($output);
+
+        // 4. Return Data
+        echo json_encode([
+            'ok' => true,
+            'output'   => $sections['output'],
+            'assembly' => $sections['assembly'],
+            'binary'   => $sections['binary']
+        ]);
+        exit;
+    }
+}
+
+function parseCompilerOutput($output) {
+    $result = [
+        'output' => '',
+        'assembly' => '',
+        'binary' => ''
+    ];
+    
+    if (empty($output)) {
+        return $result;
+    }
+    
+    // Split output into lines
+    $lines = explode("\n", $output);
+    $currentSection = 'output';
+    $outputBuffer = [];
+    $assemblyBuffer = [];
+    $binaryBuffer = [];
+    
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        
+        // Strict detection of sections based on compiler prefix
+        if (strpos($line, 'Assembly:') === 0) {
+            $currentSection = 'assembly';
+        }
+        elseif (strpos($line, 'Binary:') === 0 || strpos($line, 'Hex:') === 0) {
+            $currentSection = 'binary';
+        }
+        // If we are in assembly/binary mode but see a line that DOESN'T match patterns,
+        // it might be formatting. However, with the new compiler, structure is strict.
+        
+        // Add to appropriate buffer
+        if ($currentSection === 'assembly') {
+            $assemblyBuffer[] = $line;
+        } elseif ($currentSection === 'binary') {
+            $binaryBuffer[] = $line;
+        } else {
+            // Default is program output (or errors captured in stdout if any)
+            $outputBuffer[] = $line;
+        }
+    }
+    
+    $result['output'] = implode("\n", $outputBuffer);
+    $result['assembly'] = implode("\n", $assemblyBuffer);
+    $result['binary'] = implode("\n", $binaryBuffer);
+    
+    return $result;
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bisdaC IDE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header with Logo */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            padding: 15px 30px;
+            border-radius: 15px 15px 0 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .logo-text h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        .logo-text p {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Main Grid Layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        /* Panel Styles */
+        .panel {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .panel-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-icon {
+            font-size: 18px;
+        }
+
+        .panel-content {
+            flex: 1;
+            background: white;
+            position: relative;
+        }
+
+        /* Source Code Editor */
+        .editor-wrapper {
+            display: flex;
+            height: 400px;
+        }
+
+        .line-numbers {
+            background: #f5f5f5;
+            padding: 15px 10px;
+            text-align: right;
+            color: #999;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            border-right: 2px solid #e0e0e0;
+            user-select: none;
+            min-width: 50px;
+        }
+
+        .code-editor {
+            flex: 1;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            outline: none;
+            white-space: pre;
+            overflow: auto;
+            background: white;
+        }
+
+        .code-editor:focus {
+            background: #fffef7;
+        }
+
+        /* Output Panels */
+        .output-content {
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+            background: white;
+            color: #333;
+        }
+
+        /* Buttons */
+        button {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-run {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-run:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-run:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-restart {
+            background: #f44336;
+            color: white;
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+        }
+
+        .btn-restart:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.6);
+        }
+
+        .btn-help {
+            background: #4CAF50;
+            color: white;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        .btn-help:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 700px;
+            max-height: 85vh;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 22px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-modal:hover {
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+        }
+
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            max-height: calc(85vh - 80px);
+        }
+
+        .modal-body h3 {
+            color: #667eea;
+            margin-top: 25px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 5px;
+        }
+
+        .modal-body code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+
+        .modal-body pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo-text">
+                    <h1>bisdaC</h1>
+                </div>
+            </div>
+            <div class="header-buttons">
+                <button class="btn-run" id="runBtn">
+                    <span>▶</span> RUN
+                </button>
+                <button class="btn-restart" id="restartBtn">
+                    <span>↻</span> RESTART
+                </button>
+                <input type="file" id="fileInput" accept=".bis,.txt" style="display: none;">
+            <button class="btn-help" id="openBtn" style="background: #ff9800; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);">
+                <span>📂</span> OPEN
+            </button>
+                <button class="btn-help" id="helpBtn">
+                    <span>?</span> HELP
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Source Code Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    SOURCE CODE
+                </div>
+                <div class="panel-content">
+                    <div class="editor-wrapper">
+                        <div class="line-numbers" id="lineNumbers">1</div>
+                        <div class="code-editor" id="codeEditor" contenteditable="true">numero a = 10;
+numero b = a + 10;
+litir msg = "Hello, Bisdac!";
+ipagawas msg;
+ipagawas b;</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-icon">📤</span>
+                    OUTPUT
+                </div>
+                <div class="panel-content">
+                    <div class="output-content" id="programOutput">
+                        <div class="empty-state">Program output will appear here after running...</div>
+                    </div>
+                </div>
+            </div>
+
+             <!-- Binary/Hex Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-icon">🔢</span>
+                    BINARY / HEX
+                </div>
+                <div class="panel-content">
+                    <div class="output-content" id="binaryOutput">
+                        <div class="empty-state">Binary and Hexadecimal output will appear here after compilation...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assembly Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-icon">⚙️</span>
+                    ASSEMBLY (MIPS)
+                </div>
+                <div class="panel-content">
+                    <div class="output-content" id="assemblyOutput">
+                        <div class="empty-state">MIPS assembly code will appear here after compilation...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal" id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Bisdac Language Documentation</h2>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h3>📖 What is Bisdac?</h3>
+                <p>Bisdac is a Bisaya-inspired programming language designed for educational purposes. It compiles to MIPS64 assembly and demonstrates compiler construction principles.</p>
+
+                <h3>🎯 Data Types</h3>
+                <ul>
+                    <li><code>numero</code> - Integer variables (like <code>int</code>)</li>
+                    <li><code>litir</code> - String and character variables</li>
+                </ul>
+                <pre>numero x = 10;
+litir msg = "Kumusta!";
+litir ch = 'A';</pre>
+
+                <h3>🔧 Variable Declaration</h3>
+                <pre>numero a = 50;        <# Integer #>
+numero b;             <# Default value 0 #>
+litir name = "Juan";  <# String #>
+litir grade = 'A';    <# Character #></pre>
+
+                <h3>➕ Arithmetic Operations</h3>
+                <p>Supports: <code>+</code> <code>-</code> <code>*</code> <code>/</code> and parentheses <code>( )</code></p>
+                <pre>numero result = (10 + 5) * 2;
+numero calc = a - b / 4;</pre>
+
+                <h3>📝 Assignments</h3>
+                <pre>x = 20;          <# Simple assignment #>
+x += 5;          <# Add and assign #>
+x -= 3;          <# Subtract and assign #>
+x *= 2;          <# Multiply and assign #>
+x /= 4;          <# Divide and assign #></pre>
+
+                <h3>🖨️ Output Statement</h3>
+                <p>Use <code>ipagawas</code> to display values:</p>
+                <pre>ipagawas "Hello World!";
+ipagawas x;
+ipagawas (a + b);</pre>
+
+                <h3>💬 Comments</h3>
+                <pre>&lt;# This is a comment #&gt;</pre>
+
+                <h3>⚠️ Important Rules</h3>
+                <ul>
+                    <li>Every statement must end with semicolon <code>;</code></li>
+                    <li>String literals use double quotes <code>"text"</code></li>
+                    <li>Character literals use single quotes <code>'A'</code></li>
+                    <li>Variables must be declared before use</li>
+                </ul>
+
+                <h3>✨ Example Program</h3>
+                <pre>&lt;# Calculate area #&gt;
+numero width = 10;
+numero height = 5;
+numero area = width * height;
+
+ipagawas "Area is:";
+ipagawas area;</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Line Numbers Update
+        const editor = document.getElementById('codeEditor');
+        const lineNumbers = document.getElementById('lineNumbers');
+
+        function updateLineNumbers() {
+            const text = editor.innerText;
+            const lines = text.split('\n').length;
+            lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+        }
+
+        editor.addEventListener('input', updateLineNumbers);
+        editor.addEventListener('keyup', updateLineNumbers);
+        updateLineNumbers();
+
+        // Run Button
+        document.getElementById('runBtn').addEventListener('click', async function() {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> COMPILING...';
+
+            const code = editor.innerText;
+
+            // Clear outputs
+            document.getElementById('programOutput').innerHTML = '<div class="empty-state">Running...</div>';
+            document.getElementById('assemblyOutput').innerHTML = '<div class="empty-state">Generating...</div>';
+            document.getElementById('binaryOutput').innerHTML = '<div class="empty-state">Generating...</div>';
+
+            try {
+                const formData = new FormData();
+                formData.append('action', 'compile');
+                formData.append('code', code);
+
+                const response = await fetch('', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.ok) {
+                    document.getElementById('programOutput').innerText = result.output || 'No output';
+                    document.getElementById('assemblyOutput').innerText = result.assembly || 'No assembly generated';
+                    document.getElementById('binaryOutput').innerText = result.binary || 'No binary generated';
+                    btn.innerHTML = '<span>✓</span> SUCCESS';
+                } else {
+                    alert('Compilation failed');
+                    btn.innerHTML = '<span>▶</span> RUN';
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+                btn.innerHTML = '<span>▶</span> RUN';
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>▶</span> RUN';
+                }, 1500);
+            }
+        });
+
+        // Restart Button
+        document.getElementById('restartBtn').addEventListener('click', function() {
+            if (confirm('Clear all code and outputs?')) {
+                editor.innerText = '';
+                document.getElementById('programOutput').innerHTML = '<div class="empty-state">Program output will appear here after running...</div>';
+                document.getElementById('assemblyOutput').innerHTML = '<div class="empty-state">MIPS assembly code will appear here after compilation...</div>';
+                document.getElementById('binaryOutput').innerHTML = '<div class="empty-state">Binary and Hexadecimal output will appear here after compilation...</div>';
+                updateLineNumbers();
+            }
+        });
+
+        // Open File Button Logic
+const openBtn = document.getElementById('openBtn');
+const fileInput = document.getElementById('fileInput');
+
+openBtn.addEventListener('click', () => {
+    fileInput.click(); // Trigger the hidden file input
+});
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        // 1. Put the file content into the editor
+        document.getElementById('codeEditor').innerText = e.target.result;
+        
+        // 2. Update line numbers
+        updateLineNumbers();
+        
+        // 3. Reset outputs (Optional: keeps things clean)
+        document.getElementById('programOutput').innerHTML = '<div class="empty-state">File loaded. Ready to run...</div>';
+    };
+
+    reader.readAsText(file);
+    
+    // Reset value so you can load the same file again if needed
+    fileInput.value = '';
+});
+
+        // Help Modal
+        const modal = document.getElementById('helpModal');
+        const helpBtn = document.getElementById('helpBtn');
+        const closeModal = document.getElementById('closeModal');
+
+        helpBtn.addEventListener('click', () => modal.style.display = 'flex');
+        closeModal.addEventListener('click', () => modal.style.display = 'none');
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        });
+    </script>
+</body>
+</html>

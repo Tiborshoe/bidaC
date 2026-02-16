@@ -1,0 +1,21 @@
+<# Bisdac Example Program #>
+
+<# 1. Declare Variables #>
+litir name = "Juan";
+numero score1 = 85;
+numero score2 = 90;
+
+<# 2. Perform Calculations #>
+numero total = score1 + score2;
+numero average = total / 2;
+
+<# 3. Test Compound Assignment #>
+numero bonus = 5;
+average += bonus;  <# Add 5 to average #>
+
+<# 4. Output Results (Using new syntax) #>
+ipagawas "Student: " name;
+ipagawas "Score 1: " score1;
+ipagawas "Score 2: " score2;
+ipagawas "-------------------";
+ipagawas "Final Average: " average;

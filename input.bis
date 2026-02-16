@@ -1,0 +1,6 @@
+numero a = 10;
+numero b = 10;
+numero c = a + b;
+
+
+ipagawas c;
