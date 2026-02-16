@@ -1,6 +1,6 @@
-numero a = 10;
-numero b = 10;
-numero c = a + b;
-
-
-ipagawas c;
+litir name = "World";
+numero x = 100;
+numero y = 100;
+numero a = x + x - y;
+ipagawas "Hello " name;
+ipagawas "Value of a: " a;

@@ -97,7 +97,7 @@ static void append_output(const char *str);
 static void print_results(void);
 %}
 
-/* ADDED: is_const boolean flag to expr_info */
+/* Union includes is_const boolean flag to expr_info */
 %union {
     int num;
     char *str;
@@ -143,7 +143,9 @@ statement:
           Symbol *sym = sym_declare($2, TYPE_INT);
           if (sym) {
             sym->value = $4.value;
-            emit_sd($4.reg, $2, sym->mem_offset);
+            // Move result into r3, then store r3 to memory
+            emit_daddu(3, 0, $4.reg);
+            emit_sd(3, $2, sym->mem_offset);
           }
           free_register($4.reg);
           free($2);
@@ -152,10 +154,9 @@ statement:
           Symbol *sym = sym_declare($2, TYPE_INT);
           if (sym) {
             sym->value = 0;
-            int r = alloc_register();
-            emit_daddiu(r, 0, 0);
-            emit_sd(r, $2, sym->mem_offset);
-            free_register(r);
+            // Load 0 into r3, then store r3 to memory
+            emit_daddiu(3, 0, 0);
+            emit_sd(3, $2, sym->mem_offset);
           }
           free($2);
       }
@@ -178,10 +179,9 @@ statement:
           if (sym) {
             char ch = $4[1];
             sym->value = (int64_t)ch;
-            int r = alloc_register();
-            emit_daddiu(r, 0, (int)ch);
-            emit_sd(r, $2, sym->mem_offset);
-            free_register(r);
+            // Load char into r3, then store r3 to memory
+            emit_daddiu(3, 0, (int)ch);
+            emit_sd(3, $2, sym->mem_offset);
           }
           free($2);
           free($4);
@@ -210,7 +210,9 @@ statement:
                   error_count++;
               }
               sym->value = $3.value;
-              emit_sd($3.reg, $1, sym->mem_offset);
+              // Move result into r3, then store r3 to memory
+              emit_daddu(3, 0, $3.reg);
+              emit_sd(3, $1, sym->mem_offset);
           }
           free_register($3.reg);
           free($1);
@@ -223,11 +225,11 @@ statement:
           } else {
               sym->value += $3.value;
               int r1 = alloc_register();
-              int r2 = alloc_register();
               emit_ld(r1, $1, sym->mem_offset);
-              emit_daddu(r2, r1, $3.reg);
-              emit_sd(r2, $1, sym->mem_offset);
-              free_register(r1); free_register(r2);
+              // Calculate and put result directly in r3
+              emit_daddu(3, r1, $3.reg);
+              emit_sd(3, $1, sym->mem_offset);
+              free_register(r1); 
           }
           free_register($3.reg); free($1);
       }
@@ -239,11 +241,11 @@ statement:
           } else {
              sym->value -= $3.value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, $1, sym->mem_offset);
-             emit_dsubu(r2, r1, $3.reg);
-             emit_sd(r2, $1, sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3
+             emit_dsubu(3, r1, $3.reg);
+             emit_sd(3, $1, sym->mem_offset);
+             free_register(r1);
           }
           free_register($3.reg); free($1);
     }
@@ -255,11 +257,11 @@ statement:
           } else {
              sym->value *= $3.value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, $1, sym->mem_offset);
-             emit_dmult(r1, $3.reg, r2);
-             emit_sd(r2, $1, sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3 (MFLO r3)
+             emit_dmult(r1, $3.reg, 3);
+             emit_sd(3, $1, sym->mem_offset);
+             free_register(r1);
           }
           free_register($3.reg); free($1);
     }
@@ -271,11 +273,11 @@ statement:
           } else {
              if ($3.value != 0) sym->value /= $3.value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, $1, sym->mem_offset);
-             emit_ddiv(r1, $3.reg, r2);
-             emit_sd(r2, $1, sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3 (MFLO r3)
+             emit_ddiv(r1, $3.reg, 3);
+             emit_sd(3, $1, sym->mem_offset);
+             free_register(r1);
           }
           free_register($3.reg); free($1);
     }
@@ -404,9 +406,8 @@ expr:
               $$.reg = $2.reg;
               $$.value = -($2.value);
               $$.type = TYPE_INT;
-              $$.is_const = true; // Still a constant!
+              $$.is_const = true;
           } else {
-              // Variable or complex expression minus (e.g. -x)
               int zero_reg = alloc_register();
               int result_reg = alloc_register();
               emit_daddiu(zero_reg, 0, 0);
@@ -429,7 +430,7 @@ expr:
           $$.reg = reg;
           $$.value = $1;
           $$.type = TYPE_INT;
-          $$.is_const = true; // This flags it as a pure constant!
+          $$.is_const = true; // Flags it as a pure constant
       }
     | IDEN {
           Symbol *sym = sym_lookup($1);
@@ -560,6 +561,12 @@ static int alloc_register(void) {
     while (count < 25) {
         last_reg_idx++;
         if (last_reg_idx > 25) last_reg_idx = 1; // Wrap around to 1
+
+        // CRITICAL CHANGE: Always skip r3 so it is purely reserved for SD logic
+        if (last_reg_idx == 3) {
+            count++;
+            continue; 
+        }
 
         if (!reg_used[last_reg_idx]) {
             reg_used[last_reg_idx] = true;

@@ -568,9 +568,9 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   126,   126,   128,   133,   138,   151,   162,   176,   189,
-     202,   218,   234,   250,   266,   284,   290,   291,   295,   301,
-     315,   320,   334,   347,   360,   373,   392,   423,   426,   434
+       0,   126,   126,   128,   133,   138,   153,   163,   177,   189,
+     202,   220,   236,   252,   268,   286,   292,   293,   297,   303,
+     317,   322,   336,   349,   362,   375,   394,   424,   427,   435
 };
 #endif
 
@@ -1520,7 +1520,9 @@ yyreduce:
           Symbol *sym = sym_declare((yyvsp[(2) - (5)].str), TYPE_INT);
           if (sym) {
             sym->value = (yyvsp[(4) - (5)].expr_info).value;
-            emit_sd((yyvsp[(4) - (5)].expr_info).reg, (yyvsp[(2) - (5)].str), sym->mem_offset);
+            // Move result into r3, then store r3 to memory
+            emit_daddu(3, 0, (yyvsp[(4) - (5)].expr_info).reg);
+            emit_sd(3, (yyvsp[(2) - (5)].str), sym->mem_offset);
           }
           free_register((yyvsp[(4) - (5)].expr_info).reg);
           free((yyvsp[(2) - (5)].str));
@@ -1529,15 +1531,14 @@ yyreduce:
 
   case 6:
 /* Line 1792 of yacc.c  */
-#line 151 "bisdac.y"
+#line 153 "bisdac.y"
     {
           Symbol *sym = sym_declare((yyvsp[(2) - (3)].str), TYPE_INT);
           if (sym) {
             sym->value = 0;
-            int r = alloc_register();
-            emit_daddiu(r, 0, 0);
-            emit_sd(r, (yyvsp[(2) - (3)].str), sym->mem_offset);
-            free_register(r);
+            // Load 0 into r3, then store r3 to memory
+            emit_daddiu(3, 0, 0);
+            emit_sd(3, (yyvsp[(2) - (3)].str), sym->mem_offset);
           }
           free((yyvsp[(2) - (3)].str));
       }
@@ -1545,7 +1546,7 @@ yyreduce:
 
   case 7:
 /* Line 1792 of yacc.c  */
-#line 162 "bisdac.y"
+#line 163 "bisdac.y"
     {
           Symbol *sym = sym_declare((yyvsp[(2) - (5)].str), TYPE_STR);
           if (sym) {
@@ -1564,16 +1565,15 @@ yyreduce:
 
   case 8:
 /* Line 1792 of yacc.c  */
-#line 176 "bisdac.y"
+#line 177 "bisdac.y"
     {
           Symbol *sym = sym_declare((yyvsp[(2) - (5)].str), TYPE_CHAR);
           if (sym) {
             char ch = (yyvsp[(4) - (5)].str)[1];
             sym->value = (int64_t)ch;
-            int r = alloc_register();
-            emit_daddiu(r, 0, (int)ch);
-            emit_sd(r, (yyvsp[(2) - (5)].str), sym->mem_offset);
-            free_register(r);
+            // Load char into r3, then store r3 to memory
+            emit_daddiu(3, 0, (int)ch);
+            emit_sd(3, (yyvsp[(2) - (5)].str), sym->mem_offset);
           }
           free((yyvsp[(2) - (5)].str));
           free((yyvsp[(4) - (5)].str));
@@ -1610,7 +1610,9 @@ yyreduce:
                   error_count++;
               }
               sym->value = (yyvsp[(3) - (4)].expr_info).value;
-              emit_sd((yyvsp[(3) - (4)].expr_info).reg, (yyvsp[(1) - (4)].str), sym->mem_offset);
+              // Move result into r3, then store r3 to memory
+              emit_daddu(3, 0, (yyvsp[(3) - (4)].expr_info).reg);
+              emit_sd(3, (yyvsp[(1) - (4)].str), sym->mem_offset);
           }
           free_register((yyvsp[(3) - (4)].expr_info).reg);
           free((yyvsp[(1) - (4)].str));
@@ -1619,7 +1621,7 @@ yyreduce:
 
   case 11:
 /* Line 1792 of yacc.c  */
-#line 218 "bisdac.y"
+#line 220 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (4)].str));
           if (!sym || sym->type != TYPE_INT) {
@@ -1628,11 +1630,11 @@ yyreduce:
           } else {
               sym->value += (yyvsp[(3) - (4)].expr_info).value;
               int r1 = alloc_register();
-              int r2 = alloc_register();
               emit_ld(r1, (yyvsp[(1) - (4)].str), sym->mem_offset);
-              emit_daddu(r2, r1, (yyvsp[(3) - (4)].expr_info).reg);
-              emit_sd(r2, (yyvsp[(1) - (4)].str), sym->mem_offset);
-              free_register(r1); free_register(r2);
+              // Calculate and put result directly in r3
+              emit_daddu(3, r1, (yyvsp[(3) - (4)].expr_info).reg);
+              emit_sd(3, (yyvsp[(1) - (4)].str), sym->mem_offset);
+              free_register(r1); 
           }
           free_register((yyvsp[(3) - (4)].expr_info).reg); free((yyvsp[(1) - (4)].str));
       }
@@ -1640,7 +1642,7 @@ yyreduce:
 
   case 12:
 /* Line 1792 of yacc.c  */
-#line 234 "bisdac.y"
+#line 236 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (4)].str));
           if (!sym || sym->type != TYPE_INT) {
@@ -1649,11 +1651,11 @@ yyreduce:
           } else {
              sym->value -= (yyvsp[(3) - (4)].expr_info).value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             emit_dsubu(r2, r1, (yyvsp[(3) - (4)].expr_info).reg);
-             emit_sd(r2, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3
+             emit_dsubu(3, r1, (yyvsp[(3) - (4)].expr_info).reg);
+             emit_sd(3, (yyvsp[(1) - (4)].str), sym->mem_offset);
+             free_register(r1);
           }
           free_register((yyvsp[(3) - (4)].expr_info).reg); free((yyvsp[(1) - (4)].str));
     }
@@ -1661,7 +1663,7 @@ yyreduce:
 
   case 13:
 /* Line 1792 of yacc.c  */
-#line 250 "bisdac.y"
+#line 252 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (4)].str));
           if (!sym || sym->type != TYPE_INT) {
@@ -1670,11 +1672,11 @@ yyreduce:
           } else {
              sym->value *= (yyvsp[(3) - (4)].expr_info).value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             emit_dmult(r1, (yyvsp[(3) - (4)].expr_info).reg, r2);
-             emit_sd(r2, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3 (MFLO r3)
+             emit_dmult(r1, (yyvsp[(3) - (4)].expr_info).reg, 3);
+             emit_sd(3, (yyvsp[(1) - (4)].str), sym->mem_offset);
+             free_register(r1);
           }
           free_register((yyvsp[(3) - (4)].expr_info).reg); free((yyvsp[(1) - (4)].str));
     }
@@ -1682,7 +1684,7 @@ yyreduce:
 
   case 14:
 /* Line 1792 of yacc.c  */
-#line 266 "bisdac.y"
+#line 268 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (4)].str));
           if (!sym || sym->type != TYPE_INT) {
@@ -1691,11 +1693,11 @@ yyreduce:
           } else {
              if ((yyvsp[(3) - (4)].expr_info).value != 0) sym->value /= (yyvsp[(3) - (4)].expr_info).value;
              int r1 = alloc_register();
-             int r2 = alloc_register();
              emit_ld(r1, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             emit_ddiv(r1, (yyvsp[(3) - (4)].expr_info).reg, r2);
-             emit_sd(r2, (yyvsp[(1) - (4)].str), sym->mem_offset);
-             free_register(r1); free_register(r2);
+             // Calculate and put result directly in r3 (MFLO r3)
+             emit_ddiv(r1, (yyvsp[(3) - (4)].expr_info).reg, 3);
+             emit_sd(3, (yyvsp[(1) - (4)].str), sym->mem_offset);
+             free_register(r1);
           }
           free_register((yyvsp[(3) - (4)].expr_info).reg); free((yyvsp[(1) - (4)].str));
     }
@@ -1703,7 +1705,7 @@ yyreduce:
 
   case 15:
 /* Line 1792 of yacc.c  */
-#line 284 "bisdac.y"
+#line 286 "bisdac.y"
     {
           append_output("\n");
       }
@@ -1711,7 +1713,7 @@ yyreduce:
 
   case 18:
 /* Line 1792 of yacc.c  */
-#line 295 "bisdac.y"
+#line 297 "bisdac.y"
     {
           char *cleaned = clean_string((yyvsp[(1) - (1)].str));
           append_output(cleaned);
@@ -1722,7 +1724,7 @@ yyreduce:
 
   case 19:
 /* Line 1792 of yacc.c  */
-#line 301 "bisdac.y"
+#line 303 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (1)].str));
           if (!sym) {
@@ -1741,7 +1743,7 @@ yyreduce:
 
   case 20:
 /* Line 1792 of yacc.c  */
-#line 315 "bisdac.y"
+#line 317 "bisdac.y"
     {
           char buf[64];
           sprintf(buf, "%d", (yyvsp[(1) - (1)].num));
@@ -1751,7 +1753,7 @@ yyreduce:
 
   case 21:
 /* Line 1792 of yacc.c  */
-#line 320 "bisdac.y"
+#line 322 "bisdac.y"
     {
           if ((yyvsp[(2) - (3)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Expression in ipakita must be integer\n", yylineno);
@@ -1766,7 +1768,7 @@ yyreduce:
 
   case 22:
 /* Line 1792 of yacc.c  */
-#line 334 "bisdac.y"
+#line 336 "bisdac.y"
     {
           if ((yyvsp[(1) - (3)].expr_info).type != TYPE_INT || (yyvsp[(3) - (3)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Arithmetic requires integers\n", yylineno);
@@ -1784,7 +1786,7 @@ yyreduce:
 
   case 23:
 /* Line 1792 of yacc.c  */
-#line 347 "bisdac.y"
+#line 349 "bisdac.y"
     {
           if ((yyvsp[(1) - (3)].expr_info).type != TYPE_INT || (yyvsp[(3) - (3)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Arithmetic requires integers\n", yylineno);
@@ -1802,7 +1804,7 @@ yyreduce:
 
   case 24:
 /* Line 1792 of yacc.c  */
-#line 360 "bisdac.y"
+#line 362 "bisdac.y"
     {
           if ((yyvsp[(1) - (3)].expr_info).type != TYPE_INT || (yyvsp[(3) - (3)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Arithmetic requires integers\n", yylineno);
@@ -1820,7 +1822,7 @@ yyreduce:
 
   case 25:
 /* Line 1792 of yacc.c  */
-#line 373 "bisdac.y"
+#line 375 "bisdac.y"
     {
           if ((yyvsp[(1) - (3)].expr_info).type != TYPE_INT || (yyvsp[(3) - (3)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Arithmetic requires integers\n", yylineno);
@@ -1842,7 +1844,7 @@ yyreduce:
 
   case 26:
 /* Line 1792 of yacc.c  */
-#line 392 "bisdac.y"
+#line 394 "bisdac.y"
     {
           if ((yyvsp[(2) - (2)].expr_info).type != TYPE_INT) {
               fprintf(stderr, "Error (line %d): Unary minus requires integer\n", yylineno);
@@ -1858,9 +1860,8 @@ yyreduce:
               (yyval.expr_info).reg = (yyvsp[(2) - (2)].expr_info).reg;
               (yyval.expr_info).value = -((yyvsp[(2) - (2)].expr_info).value);
               (yyval.expr_info).type = TYPE_INT;
-              (yyval.expr_info).is_const = true; // Still a constant!
+              (yyval.expr_info).is_const = true;
           } else {
-              // Variable or complex expression minus (e.g. -x)
               int zero_reg = alloc_register();
               int result_reg = alloc_register();
               emit_daddiu(zero_reg, 0, 0);
@@ -1877,7 +1878,7 @@ yyreduce:
 
   case 27:
 /* Line 1792 of yacc.c  */
-#line 423 "bisdac.y"
+#line 424 "bisdac.y"
     { 
           (yyval.expr_info) = (yyvsp[(2) - (3)].expr_info); 
       }
@@ -1885,20 +1886,20 @@ yyreduce:
 
   case 28:
 /* Line 1792 of yacc.c  */
-#line 426 "bisdac.y"
+#line 427 "bisdac.y"
     {
           int reg = alloc_register();
           emit_daddiu(reg, 0, (yyvsp[(1) - (1)].num));
           (yyval.expr_info).reg = reg;
           (yyval.expr_info).value = (yyvsp[(1) - (1)].num);
           (yyval.expr_info).type = TYPE_INT;
-          (yyval.expr_info).is_const = true; // This flags it as a pure constant!
+          (yyval.expr_info).is_const = true; // Flags it as a pure constant
       }
     break;
 
   case 29:
 /* Line 1792 of yacc.c  */
-#line 434 "bisdac.y"
+#line 435 "bisdac.y"
     {
           Symbol *sym = sym_lookup((yyvsp[(1) - (1)].str));
           int reg = alloc_register();
@@ -1922,7 +1923,7 @@ yyreduce:
 
 
 /* Line 1792 of yacc.c  */
-#line 1926 "bisdac.tab.c"
+#line 1927 "bisdac.tab.c"
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -2154,7 +2155,7 @@ yyreturn:
 
 
 /* Line 2055 of yacc.c  */
-#line 454 "bisdac.y"
+#line 455 "bisdac.y"
 
 
 /* ========================================================================== */
@@ -2264,6 +2265,12 @@ static int alloc_register(void) {
     while (count < 25) {
         last_reg_idx++;
         if (last_reg_idx > 25) last_reg_idx = 1; // Wrap around to 1
+
+        // CRITICAL CHANGE: Always skip r3 so it is purely reserved for SD logic
+        if (last_reg_idx == 3) {
+            count++;
+            continue; 
+        }
 
         if (!reg_used[last_reg_idx]) {
             reg_used[last_reg_idx] = true;
